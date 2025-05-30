@@ -1,5 +1,6 @@
 from flask import Flask, request, jsonify
-from llm_calls import extract_activities
+from server.config import *
+from llm_calls import *
 
 app = Flask(__name__)
 

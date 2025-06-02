@@ -1,3 +1,4 @@
+from server.config import *
 from llm_calls import extract_activities
 import json
 

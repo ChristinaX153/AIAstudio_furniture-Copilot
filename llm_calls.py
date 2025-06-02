@@ -1,12 +1,57 @@
+from server.config import client, completion_model
+import json
+
+METABOLIC_RATES = {
+    "sleeping": 0.7,
+    "cooking": 1.8,
+    "working": 1.3,
+    "reclining": 0.8,
+    "yoga": 2.5,
+    "sitting": 1.0,
+    "typing": 1.1,
+    "standing": 1.2
+}
+
 def extract_activities(natural_text):
-    # All activities set to every hour of the day
-    hours = list(range(24))
-    return f"""
+    response = client.chat.completions.create(
+        model=completion_model,
+        messages=[
+            {
+                "role": "system",
+                "content": """
+You are an assistant that extracts daily activities, their time slots, and the typical metabolic rate (in METs) for each activity from a person's schedule.
+
+From the user's text, extract a list in this JSON format:
 [
-  {{"activity": "sleeping", "hours": {hours}}},
-  {{"activity": "cooking", "hours": {hours}}},
-  {{"activity": "working", "hours": {hours}}},
-  {{"activity": "reclining", "hours": {hours}}},
-  {{"activity": "yoga", "hours": {hours}}}
+  {"activity": "activity_name", "hours": [hour1, hour2, ...], "metabolic_rate": value},
+  ...
 ]
-"""
+
+Rules:
+- Use 24-hour time (0–23)
+- For hour ranges, include all full hours in between
+- For vague times like 'morning' or 'evening', use typical hours (morning=7-11, evening=18-21)
+- Use typical MET values for each activity: sleeping=0.7, cooking=1.8, working=1.3, reclining=0.8, yoga=2.5, sitting=1.0, typing=1.1, standing=1.2.
+- Do not explain. Only output valid JSON.
+""",
+            },
+            {
+                "role": "user",
+                "content": natural_text,
+            },
+        ],
+        temperature=0.2,
+    )
+    result_json = response.choices[0].message.content
+
+    try:
+        activities = json.loads(result_json)
+        for activity in activities:
+            act_name = activity["activity"].lower()
+            if act_name in METABOLIC_RATES:
+                activity["metabolic_rate"] = METABOLIC_RATES[act_name]
+            else:
+                activity["metabolic_rate"] = activity.get("metabolic_rate", 1.0)
+        return json.dumps(activities)
+    except Exception as e:
+        return json.dumps({"error": str(e), "raw_output": result_json})

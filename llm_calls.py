@@ -8,7 +8,6 @@ METABOLIC_RATES = {
     "reclining": 0.8,
     "yoga": 2.5,
     "sitting": 1.0,
-    "typing": 1.1,
     "standing": 1.2
 }
 
@@ -46,12 +45,33 @@ Rules:
 
     try:
         activities = json.loads(result_json)
+        # Fix the metabolic rates if needed
         for activity in activities:
             act_name = activity["activity"].lower()
             if act_name in METABOLIC_RATES:
                 activity["metabolic_rate"] = METABOLIC_RATES[act_name]
             else:
                 activity["metabolic_rate"] = activity.get("metabolic_rate", 1.0)
-        return json.dumps(activities)
+
+        # 24-hour lists, default values
+        hourly_metabolic_rates = [1.2] * 24
+        hourly_activities = ["standing"] * 24
+
+        # Fill hours with correct activity & rate
+        for activity in activities:
+            for h in activity["hours"]:
+                hourly_metabolic_rates[h] = activity["metabolic_rate"]
+                hourly_activities[h] = activity["activity"]
+
+        # Return everything
+        return {
+            "activities_json": activities,
+            "hourly_metabolic_rates": hourly_metabolic_rates,
+            "hourly_activities": hourly_activities
+        }
     except Exception as e:
-        return json.dumps({"error": str(e), "raw_output": result_json})
+        return {
+            "error": str(e),
+            "raw_output": result_json
+        }
+

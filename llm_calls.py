@@ -1,6 +1,7 @@
 from server.config import client, completion_model
 import pandas as pd
 import json
+from difflib import get_close_matches
 
 # Default metabolic rates (fallbacks)
 METABOLIC_RATES = {
@@ -18,14 +19,25 @@ ALIAS_CSV_PATH = "Activity_Aliases.csv"
 alias_df = pd.read_csv(ALIAS_CSV_PATH)
 ALIASES = alias_df.to_dict(orient="records")
 
-# Phrase-matching function
+# ✅ Improved alias match: containment first, then fuzzy
 def find_alias_in_text(text):
-    text = text.lower()
+    text = text.lower().strip()
+
+    # Step 1: Check if any user_phrase is contained inside the activity
     for entry in sorted(ALIASES, key=lambda x: len(x["user_phrase"]), reverse=True):
-        if entry["user_phrase"] in text:
+        if entry["user_phrase"].lower().strip() in text:
             return entry
+
+    # Step 2: Fuzzy match fallback
+    user_phrases = [a["user_phrase"].lower().strip() for a in ALIASES]
+    match = get_close_matches(text, user_phrases, n=1, cutoff=0.6)
+    if match:
+        for entry in ALIASES:
+            if entry["user_phrase"].lower().strip() == match[0]:
+                return entry
     return None
 
+# Main LLM-driven extraction
 def extract_activities(natural_text):
     response = client.chat.completions.create(
         model=completion_model,
@@ -62,19 +74,22 @@ Rules:
     try:
         activities = json.loads(result_json)
 
-        # Initialize default per-hour values
+        # Initialize output lists
         hourly_metabolic_rates = [1.2] * 24
         hourly_activities = ["standing"] * 24
-        hourly_furniture = ["standing desk or counter"] * 24
+        hourly_furniture = ["bookcase-storage"] * 24
 
+        print("----- Matched Activities From LLM -----")
         for activity in activities:
             matched = find_alias_in_text(activity["activity"])
             if matched:
+                print(f"> {activity['activity']} → {matched['base_activity']}")
                 activity["activity"] = matched["base_activity"]
                 activity["metabolic_rate"] = matched["metabolic_rate"]
                 activity["furniture"] = matched["furniture"]
             else:
                 act_name = activity["activity"].lower()
+                print(f"> {activity['activity']} → fallback")
                 activity["metabolic_rate"] = METABOLIC_RATES.get(act_name, activity.get("metabolic_rate", 1.0))
                 activity["furniture"] = "sofa"
 
